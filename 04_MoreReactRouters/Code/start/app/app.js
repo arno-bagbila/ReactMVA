@@ -1,24 +1,31 @@
 var React = require('react');
 var ReactDOM = require('react-dom');
+var ReactRouter = require('react-router');
+
+var browserHistory = ReactRouter.browserHistory;
+var Route = ReactRouter.Route;
+var Router = ReactRouter.Router;
+var Link = ReactRouter.Link;
 
 var samples = require('./sample-data');
+
+var PureRenderMixin = require('react-addons-pure-render-mixin');
 
 var App = React.createClass({
   getInitialState: function() {
     return { 
       "humans": {},
-      "stores": {},
-      "selectedConversation": []
+      "stores": {}
     };
   },
   loadSampleData: function(){
     this.setState(samples);
-    this.setState({selectedConversation: samples.humans["Rami Sayar"].conversations});
   },
-  setSelectedConversation: function(human_index){
-    this.setState({
-      selectedConversation: this.state.humans[human_index].conversations
-    })
+
+  componentWillMount: function(){
+    if ('human' in this.props.params){
+      this.loadSampleData();
+    }
   },
   render: function() {
     return (
@@ -27,10 +34,10 @@ var App = React.createClass({
         <button onClick={this.loadSampleData}>Load Sample Data</button>
         <div className="container">
           <div className="column">
-            <InboxPane humans={this.state.humans} setSelectedConversation={this.setSelectedConversation} />
+            <InboxPane humans={this.state.humans} />
           </div>
           <div className="column">
-            <ConversationPane conversation={this.state.selectedConversation} />
+            {this.props.children || "Select a Conversation from the inbox"}
           </div>
           <div className="column">
             <StorePane stores={this.state.stores} />
@@ -43,7 +50,7 @@ var App = React.createClass({
 
 var InboxPane = React.createClass({
   renderConvoSum: function(human){
-    return <InboxItem key={human} index={human} details={this.props.humans[human]} setSelectedConversation={this.props.setSelectedConversation} />;
+    return <InboxItem key={human} index={human} details={this.props.humans[human]} />;
   },
   render : function() {
     return (
@@ -67,6 +74,8 @@ var InboxPane = React.createClass({
 });
 
 var InboxItem = React.createClass({
+  mixins: [PureRenderMixin],
+  
   sortByDate: function(a, b) {
     return a.time>b.time ? -1 : a.time<b.time ? 1 : 0;
   },
@@ -74,13 +83,10 @@ var InboxItem = React.createClass({
     var lastMessage = conversations.sort(this.sortByDate)[0];
     return lastMessage.who + ' said: "' + lastMessage.text + '" @ ' + lastMessage.time.toDateString();
   },
-  setSelected: function(){
-    this.props.setSelectedConversation(this.props.index);
-  },
   render: function(){
     return (
       <tr>
-        <td><a onClick={this.setSelected}>{this.messageSummary(this.props.details.conversations)}</a></td>
+        <td><Link to={'/conversation/' + encodeURIComponent(this.props.index)}>{this.messageSummary(this.props.details.conversations)}</Link></td>
         <td>{this.props.index}</td>
         <td>{this.props.details.orders.sort(this.sortByDate)[0].status}</td>
       </tr>
@@ -89,16 +95,28 @@ var InboxItem = React.createClass({
 });
 
 var ConversationPane = React.createClass({
+  loadConversationData : function(human){
+    this.setState({conversation : samples.humans[human].conversations});
+  },
   renderMessage: function(val){
     return <Message who={val.who} text={val.text} key={val.time.getTime()} />;
+  },
+  // Handle when User navigates / to /conversation/:human
+  componentWillMount: function(){
+    this.loadConversationData(this.props.params.human);
+  },
+  // Handle when user navigates / conversation/Rami to /conversation/Jeremy
+  componentWillReceiveProps: function(nextProps){
+    this.loadConversationData(nextProps.params.human);
+
   },
   render: function() {
     return (
       <div id="conversation-pane">
         <h1>Conversation</h1>
-        <h3>Select a conversation from the inbox</h3>
+        <h3>{this.props.params.human}</h3>
         <div id="messages">
-          {this.props.conversation.map(this.renderMessage)}
+         {this.state.conversation.map(this.renderMessage)}
         </div>
       </div>
     )
@@ -106,6 +124,7 @@ var ConversationPane = React.createClass({
 });
 
 var Message = React.createClass({
+  mixins: [PureRenderMixin],
   render: function() {
     return (
       <p>{this.props.who} said: "{this.props.text}"</p>
@@ -145,4 +164,9 @@ var Store = React.createClass({
   }
 });
 
-ReactDOM.render(<App/>, document.getElementById('main'));
+ReactDOM.render(
+  <Router history ={browserHistory}>
+    <Route path="/" component={App}>
+      <Route path="/conversation/:human" component={ConversationPane}></Route>
+    </Route>
+  </Router>, document.getElementById('main'));
